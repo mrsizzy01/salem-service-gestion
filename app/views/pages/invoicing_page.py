@@ -82,6 +82,22 @@ class InvoicingPage(BasePage):
         new_label.setStyleSheet("font-weight: 700; font-size: 15px;")
         left_layout.addWidget(new_label)
 
+        # ---- Scanneur de code-barres & Type de document ----
+        scanner_layout = QHBoxLayout()
+        self.barcode_input = QLineEdit()
+        self.barcode_input.setPlaceholderText("Scanner code-barres ou SKU + Entrée...")
+        self.barcode_input.setMinimumHeight(36)
+        self.barcode_input.returnPressed.connect(self._on_barcode_scanned)
+        
+        self.doc_type_combo = QComboBox()
+        self.doc_type_combo.addItems(["Facture", "Devis / Pro-forma"])
+        self.doc_type_combo.setMinimumHeight(36)
+        self.doc_type_combo.currentIndexChanged.connect(self._on_doc_type_changed)
+        
+        scanner_layout.addWidget(self.barcode_input, 3)
+        scanner_layout.addWidget(self.doc_type_combo, 2)
+        left_layout.addLayout(scanner_layout)
+
         # ---- Informations client (agencées de manière compacte) ------
         client_form = QFormLayout()
         client_form.setSpacing(8)
@@ -258,15 +274,40 @@ class InvoicingPage(BasePage):
         
         left_layout.addWidget(totals_panel)
 
+        # ---- Options de Paiement et d'Impression ----
+        options_row = QHBoxLayout()
+        
+        pay_layout = QVBoxLayout()
+        pay_label = QLabel("MODE DE PAIEMENT")
+        pay_label.setStyleSheet("font-size: 10px; font-weight: 600; color: #98989D;")
+        self.payment_combo = QComboBox()
+        self.payment_combo.addItems(["Cash", "Mobile Money", "Chèque"])
+        self.payment_combo.setMinimumHeight(36)
+        pay_layout.addWidget(pay_label)
+        pay_layout.addWidget(self.payment_combo)
+        
+        print_layout = QVBoxLayout()
+        print_label = QLabel("FORMAT D'IMPRESSION")
+        print_label.setStyleSheet("font-size: 10px; font-weight: 600; color: #98989D;")
+        self.print_format_combo = QComboBox()
+        self.print_format_combo.addItems(["A4", "Ticket (80mm)"])
+        self.print_format_combo.setMinimumHeight(36)
+        print_layout.addWidget(print_label)
+        print_layout.addWidget(self.print_format_combo)
+        
+        options_row.addLayout(pay_layout, 1)
+        options_row.addLayout(print_layout, 1)
+        left_layout.addLayout(options_row)
+
         # ---- Validation -----------------------------------------------
         buttons_row = QHBoxLayout()
-        validate_button = QPushButton("✔ Valider la facture")
-        validate_button.setObjectName("PrimaryButton")
-        validate_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        validate_button.clicked.connect(self._validate)
+        self.validate_button = QPushButton("✔ Valider la facture")
+        self.validate_button.setObjectName("PrimaryButton")
+        self.validate_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.validate_button.clicked.connect(self._validate)
         reset_button = QPushButton("Réinitialiser")
         reset_button.clicked.connect(self._reset_form)
-        buttons_row.addWidget(validate_button, 1)
+        buttons_row.addWidget(self.validate_button, 1)
         buttons_row.addWidget(reset_button)
         left_layout.addLayout(buttons_row)
 
@@ -314,14 +355,22 @@ class InvoicingPage(BasePage):
         self.cancel_button.setObjectName("DangerButton")
         self.cancel_button.clicked.connect(self._cancel_selected)
         self.cancel_button.setVisible(user.role == ROLE_ADMIN)
+        
+        self.convert_button = QPushButton("🔄 Convertir en Facture")
+        self.convert_button.clicked.connect(self._convert_selected)
+        self.convert_button.setVisible(False)
+        
         history_buttons.addWidget(preview_button)
         history_buttons.addWidget(pdf_button)
+        history_buttons.addWidget(self.convert_button)
         history_buttons.addWidget(self.cancel_button)
         history_buttons.addStretch()
         right_layout.addLayout(history_buttons)
 
         splitter.addWidget(right)
         splitter.setSizes([620, 680])
+
+        self.history_table.itemSelectionChanged.connect(self._on_history_selection_changed)
 
         self._reload_products()
         self._reload_customers()
@@ -500,6 +549,82 @@ class InvoicingPage(BasePage):
         self._reload_products()
 
     # ==================================================================
+    # Nouveaux modules : Code-barres, Devis et Caisse
+    # ==================================================================
+    def _on_barcode_scanned(self) -> None:
+        """Recherche et ajoute automatiquement un produit par code-barres ou SKU."""
+        text = self.barcode_input.text().strip()
+        if not text:
+            return
+        
+        product = None
+        for p in self._products:
+            p_barcode = str(p.get("barcode") or "").strip()
+            p_sku = str(p.get("sku") or "").strip()
+            if text.lower() in (p_barcode.lower(), p_sku.lower()):
+                product = p
+                break
+        
+        if product:
+            item = {
+                "product_id": product["id"],
+                "name": product["name"],
+                "quantity": 1.0,
+                "unit_price": product["sale_price"],
+                "is_manual": False,
+            }
+            for existing in self.items:
+                if existing["product_id"] == item["product_id"]:
+                    existing["quantity"] += 1.0
+                    break
+            else:
+                self.items.append(item)
+            
+            self._refresh_items_table()
+            self.barcode_input.clear()
+            if hasattr(self.window(), "statusBar") and self.window().statusBar():
+                self.window().statusBar().showMessage(f"Produit ajouté : {product['name']}", 2000)
+        else:
+            self.show_error(f"Aucun produit trouvé avec le code-barres/SKU : « {text} »")
+
+    def _on_doc_type_changed(self, index: int) -> None:
+        """Bascule le bouton de validation selon le type de document."""
+        if index == 1:  # Devis
+            self.validate_button.setText("✔ Générer le devis")
+            self.paid_spin.setEnabled(False)
+            self.paid_spin.setValue(0.0)
+        else:
+            self.validate_button.setText("✔ Valider la facture")
+            self.paid_spin.setEnabled(True)
+
+    def _on_history_selection_changed(self) -> None:
+        """Affiche ou masque le bouton de conversion selon le document sélectionné."""
+        row = self.history_table.currentRow()
+        if row < 0:
+            self.convert_button.setVisible(False)
+            return
+        statut_item = self.history_table.item(row, 6)
+        if statut_item:
+            status = statut_item.text().lower()
+            self.convert_button.setVisible(status == "devis")
+
+    def _convert_selected(self) -> None:
+        """Convertit le devis sélectionné en facture validée."""
+        sale_id = self.selected_row_id(self.history_table)
+        if sale_id is None:
+            self.show_error("Sélectionnez un devis à convertir.")
+            return
+        if not self.confirm("Convertir ce devis en facture ?\n"
+                            "Cette action va diminuer les stocks et valider la vente."):
+            return
+        try:
+            sale = SaleController.convert_devis_to_invoice(sale_id, self.user)
+            QMessageBox.information(self, "Conversion", f"Le devis {sale['number']} a été converti en facture avec succès.")
+        except Exception as exc:
+            self.show_error(str(exc))
+        self.refresh()
+
+    # ==================================================================
     # Validation
     # ==================================================================
     def _validate(self) -> None:
@@ -507,16 +632,23 @@ class InvoicingPage(BasePage):
         if not self.items:
             self.show_error("Ajoutez au moins un produit à la facture.")
             return
-        if not self.confirm("Valider cette facture ?\n"
-                            "La vente sera enregistrée et le stock mis à jour."):
+            
+        doc_type = self.doc_type_combo.currentText()
+        is_devis = doc_type == "Devis / Pro-forma"
+        
+        msg = ("Générer ce devis / pro-forma ?" if is_devis 
+               else "Valider cette facture ?\nLa vente sera enregistrée et le stock mis à jour.")
+        if not self.confirm(msg):
             return
 
         data = {
             "customer_name": self.customer_name.text(),
             "customer_phone": self.customer_phone.text(),
             "customer_id": self.customer_combo.currentData(),
-            "amount_paid": self.paid_spin.value(),
+            "amount_paid": 0.0 if is_devis else self.paid_spin.value(),
             "items": list(self.items),
+            "status": "devis" if is_devis else "validée",
+            "payment_method": self.payment_combo.currentText(),
         }
         try:
             sale = SaleController.create_sale(data, self.user)
@@ -536,7 +668,7 @@ class InvoicingPage(BasePage):
 
         # Impression / Aperçu automatique direct
         try:
-            print_invoice(sale, self.company, self)
+            print_invoice(sale, self.company, self, self.print_format_combo.currentText())
         except Exception:
             pass
 
@@ -607,7 +739,7 @@ class InvoicingPage(BasePage):
                 sale["pdf_path"] = self._ensure_pdf(sale)
             except Exception:
                 pass
-            print_invoice(sale, SettingsController.get_company(), self)
+            print_invoice(sale, SettingsController.get_company(), self, self.print_format_combo.currentText())
 
     def _open_pdf_selected(self) -> None:
         """Ouvre le PDF de la facture sélectionnée."""

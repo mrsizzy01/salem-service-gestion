@@ -238,3 +238,29 @@ class ReportController:
             )
             return [{"name": p.name, "stock_qty": p.stock_qty,
                      "alert_threshold": p.alert_threshold} for p in rows]
+
+    @staticmethod
+    def today_cash_summary() -> dict[str, float]:
+        """Répartition du chiffre d'affaires du jour par mode de paiement."""
+        now = datetime.now()
+        day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        with get_session() as session:
+            rows = (
+                session.query(Sale.payment_method, func.sum(Sale.amount_paid))
+                .filter(Sale.created_at >= day_start, Sale.status == SALE_VALIDATED)
+                .group_by(Sale.payment_method)
+                .all()
+            )
+        result = {"Cash": 0.0, "Mobile Money": 0.0, "Chèque": 0.0}
+        for method, total in rows:
+            if method:
+                name = method.strip()
+                if "money" in name.lower() or "momo" in name.lower() or "mobile" in name.lower():
+                    result["Mobile Money"] += float(total or 0.0)
+                elif "chè" in name.lower() or "cheque" in name.lower():
+                    result["Chèque"] += float(total or 0.0)
+                else:
+                    result["Cash"] += float(total or 0.0)
+            else:
+                result["Cash"] += float(total or 0.0)
+        return result

@@ -135,10 +135,24 @@ def _migration_003(engine: Engine) -> None:
             pass
 
 
+def _migration_004(engine: Engine) -> None:
+    """Version 4 : Ajout de payment_method à sales et fidelity_points à customers."""
+    with engine.begin() as conn:
+        try:
+            conn.execute(text("ALTER TABLE sales ADD COLUMN payment_method VARCHAR(40) DEFAULT 'Cash'"))
+        except Exception:
+            pass
+        try:
+            conn.execute(text("ALTER TABLE customers ADD COLUMN fidelity_points INTEGER DEFAULT 0"))
+        except Exception:
+            pass
+
+
 MIGRATIONS: list[tuple[int, str, Callable[[Engine], None]]] = [
     (1, "Création initiale des tables", _migration_001),
     (2, "Mise à jour du schéma (colonnes et tables manquantes)", _migration_002),
     (3, "Mise à jour du nom de l'entreprise par défaut à Salem Service", _migration_003),
+    (4, "Ajout de payment_method et fidelity_points", _migration_004),
 ]
 
 

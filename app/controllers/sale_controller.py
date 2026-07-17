@@ -55,7 +55,7 @@ class SaleController:
 
         :param data:
             customer_name, customer_phone, customer_id (facultatif),
-            amount_paid,
+            amount_paid, payment_method, status (facultatif, "validée" ou "devis"),
             items : liste de dicts ``product_id`` (None si manuel),
                     ``name``, ``quantity``, ``unit_price``, ``is_manual``.
         :raises ValueError: si les données sont invalides.
@@ -74,6 +74,8 @@ class SaleController:
                 raise ValueError(f"Prix unitaire invalide pour « {item.get('name')} ».")
 
         amount_paid = max(0.0, float(data.get("amount_paid", 0)))
+        status = data.get("status", SALE_VALIDATED)
+        payment_method = (data.get("payment_method") or "Cash").strip()
 
         with get_session() as session:
             number = SaleController._next_invoice_number(session)
@@ -87,7 +89,8 @@ class SaleController:
                 subtotal=0.0,
                 total=0.0,
                 remaining=0.0,
-                status=SALE_VALIDATED,
+                status=status,
+                payment_method=payment_method,
                 user_id=user.id if user else None,
             )
             session.add(sale)
@@ -114,8 +117,8 @@ class SaleController:
                     is_manual=bool(item_data.get("is_manual")) or product is None,
                 ))
 
-                # Mise à jour du stock pour les produits enregistrés.
-                if product is not None:
+                # Mise à jour du stock pour les produits enregistrés (uniquement si validée).
+                if product is not None and status == SALE_VALIDATED:
                     product.stock_qty -= quantity
                     session.add(StockMovement(
                         product_id=product.id,
@@ -132,8 +135,8 @@ class SaleController:
             sale.amount_paid = round2(amount_paid)
             sale.remaining = max(0.0, round2(sale.total - sale.amount_paid))
 
-            # Création automatique de la dette si montant restant et client enregistré
-            if sale.remaining > 0 and sale.customer_id:
+            # Création automatique de la dette si montant restant, client enregistré, et facture validée.
+            if sale.remaining > 0 and sale.customer_id and status == SALE_VALIDATED:
                 from app.models.entities import CustomerDebt
                 from datetime import timedelta
                 session.flush()  # Assigne l'id de la vente
@@ -150,11 +153,60 @@ class SaleController:
                 session.add(debt)
 
             session.commit()
+            action_desc = "Vente validée" if status == SALE_VALIDATED else "Devis généré"
             log_action(
-                "Vente validée",
+                action_desc,
                 f"{number} — total {sale.total:g} — {len(items_data)} article(s)",
                 user,
             )
+            return SaleController._to_dict(sale)
+
+    @staticmethod
+    def convert_devis_to_invoice(sale_id: int, user: User | None = None) -> dict:
+        """Convertit un devis en facture validée (décrémente les stocks, crée les dettes et les mouvements)."""
+        with get_session() as session:
+            sale = session.get(Sale, sale_id)
+            if sale is None:
+                raise ValueError("Devis introuvable.")
+            if sale.status != "devis":
+                raise ValueError("Ce document n'est pas un devis.")
+
+            # 1. Vérification et diminution du stock
+            for item in sale.items:
+                if item.product_id:
+                    product = session.get(Product, item.product_id)
+                    if product is not None:
+                        product.stock_qty -= item.quantity
+                        session.add(StockMovement(
+                            product_id=product.id,
+                            move_type=MOVE_OUT,
+                            quantity=item.quantity,
+                            stock_after=product.stock_qty,
+                            reason="Vente (conversion devis)",
+                            reference=sale.number,
+                            user_id=user.id if user else None,
+                        ))
+
+            # 2. Création de la dette si nécessaire
+            if sale.remaining > 0 and sale.customer_id:
+                from app.models.entities import CustomerDebt
+                from datetime import timedelta
+                debt = CustomerDebt(
+                    customer_id=sale.customer_id,
+                    sale_id=sale.id,
+                    amount=sale.remaining,
+                    paid=0.0,
+                    remaining=sale.remaining,
+                    due_date=datetime.now() + timedelta(days=30),
+                    notes=f"Créée automatiquement suite à la facture {sale.number} (devis)",
+                    status="actif"
+                )
+                session.add(debt)
+
+            # 3. Changement du statut
+            sale.status = SALE_VALIDATED
+            session.commit()
+            log_action("Devis converti en facture", sale.number, user)
             return SaleController._to_dict(sale)
 
     # ------------------------------------------------------------------
@@ -267,6 +319,7 @@ class SaleController:
             "remaining": sale.remaining,
             "status": sale.status,
             "pdf_path": sale.pdf_path,
+            "payment_method": sale.payment_method,
         }
 
     @staticmethod

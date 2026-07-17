@@ -121,8 +121,9 @@ def generate_invoice_pdf(sale: dict, company: dict, dest: str | Path) -> str:
     # ---- Titre + bloc client --------------------------------------
     created = sale["created_at"]
     date_text = created.strftime("%d/%m/%Y %H:%M") if hasattr(created, "strftime") else str(created)
+    doc_title = "DEVIS / PRO-FORMA" if sale.get("status") == "devis" else "FACTURE"
     title_block = [
-        Paragraph("FACTURE", _TITLE),
+        Paragraph(doc_title, _TITLE),
         Spacer(1, 3),
         Paragraph(f"N° <b>{sale['number']}</b>", _BASE),
         Paragraph(f"Date : {date_text}", _SMALL_GREY),

@@ -7,11 +7,12 @@ from datetime import datetime
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QTableWidgetItem, QVBoxLayout
 
 from app.controllers.report_controller import ReportController
 from app.controllers.settings_controller import SettingsController
-from app.utils.helpers import format_money
+from app.utils.helpers import format_money, format_qty
 from app.views.pages.base_page import BasePage
 from app.views.widgets import StatCard
 
@@ -74,6 +75,29 @@ class DashboardPage(BasePage):
         recent_layout.addWidget(self.recent_table)
         charts_row2.addWidget(recent_frame, 2)
         self.main_layout.addLayout(charts_row2, 1)
+
+        # Alertes stock bas & Synthèse de caisse.
+        charts_row3 = QHBoxLayout()
+        charts_row3.setSpacing(12)
+        
+        alert_frame, alert_layout = self._panel("Alertes stock bas (Seuil atteint)")
+        self.alert_table = self.make_table(["Produit", "Stock Actuel", "Seuil"])
+        alert_header = self.alert_table.horizontalHeader()
+        alert_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        alert_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        alert_header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        alert_layout.addWidget(self.alert_table)
+        charts_row3.addWidget(alert_frame, 3)
+        
+        cash_frame, cash_layout = self._panel("Synthèse de Caisse (Aujourd'hui)")
+        self.cash_table = self.make_table(["Mode de paiement", "Montant Encaissé"])
+        cash_header = self.cash_table.horizontalHeader()
+        cash_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        cash_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        cash_layout.addWidget(self.cash_table)
+        charts_row3.addWidget(cash_frame, 2)
+        
+        self.main_layout.addLayout(charts_row3, 1)
 
         self.refresh()
 
@@ -190,11 +214,45 @@ class DashboardPage(BasePage):
                 format_money(sale["total"], self.currency),
             ]
             for col, value in enumerate(values):
-                from PySide6.QtWidgets import QTableWidgetItem
-
                 item = QTableWidgetItem(value)
                 if col == 3:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 if sale["status"] == "annulée":
-                    item.setForeground(Qt.GlobalColor.gray)
+                    item.setForeground(QColor("#8E8E93"))
+                elif sale["status"] == "devis":
+                    item.setForeground(QColor("#FF9F0A"))
                 self.recent_table.setItem(row, col, item)
+
+        # Alertes stock bas.
+        low_stock = ReportController.low_stock_products(8)
+        self.alert_table.setRowCount(len(low_stock))
+        for row, prod in enumerate(low_stock):
+            values = [
+                prod["name"],
+                format_qty(prod["stock_qty"]),
+                format_qty(prod["alert_threshold"]),
+            ]
+            for col, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                if col > 0:
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                if prod["stock_qty"] <= 0:
+                    item.setForeground(QColor("#FF3B30"))
+                else:
+                    item.setForeground(QColor("#FF9F0A"))
+                self.alert_table.setItem(row, col, item)
+
+        # Synthèse de caisse.
+        cash_summary = ReportController.today_cash_summary()
+        self.cash_table.setRowCount(len(cash_summary))
+        for row, (method, amount) in enumerate(cash_summary.items()):
+            values = [
+                method,
+                format_money(amount, self.currency)
+            ]
+            for col, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                if col == 1:
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                    item.setForeground(QColor("#30D158"))
+                self.cash_table.setItem(row, col, item)

@@ -132,6 +132,7 @@ class Customer(Base):
     city: Mapped[str] = mapped_column(String(100), default="Lubumbashi")
     province: Mapped[str] = mapped_column(String(100), default="Haut-Katanga")
     credit_limit: Mapped[float] = mapped_column(Float, default=0.0)  # limite de crédit
+    fidelity_points: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
 
@@ -182,6 +183,7 @@ class Sale(Base):
 
     status: Mapped[str] = mapped_column(String(20), default="validée", index=True)
     pdf_path: Mapped[str] = mapped_column(String(500), default="")
+    payment_method: Mapped[str] = mapped_column(String(40), default="Cash")
     user_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
 
     items: Mapped[list["SaleItem"]] = relationship(

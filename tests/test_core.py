@@ -141,6 +141,48 @@ class TestSales:
         with get_session() as session:
             assert session.get(Sale, sale["id"]).status == "annulée"
 
+    def test_devis_flow_and_conversion(self, fresh_db):
+        product = self._setup()
+        sale = SaleController.create_sale({
+            "customer_name": "Devis client", "customer_phone": "12345",
+            "amount_paid": 0,
+            "status": "devis",
+            "items": [{"product_id": product["id"], "name": product["name"],
+                       "quantity": 3, "unit_price": 20000, "is_manual": False}],
+        })
+        assert sale["status"] == "devis"
+        # Stock is NOT decremented for devis
+        assert ProductController.get_product(product["id"])["stock_qty"] == 10
+
+        # Convert to invoice
+        converted = SaleController.convert_devis_to_invoice(sale["id"])
+        assert converted["status"] == "validée"
+        # Stock IS decremented after conversion
+        assert ProductController.get_product(product["id"])["stock_qty"] == 7
+
+    def test_today_cash_summary(self, fresh_db):
+        product = self._setup()
+        # Create sales with different payment methods
+        SaleController.create_sale({
+            "amount_paid": 10000, "payment_method": "Cash",
+            "items": [{"product_id": product["id"], "name": product["name"],
+                       "quantity": 1, "unit_price": 20000, "is_manual": False}],
+        })
+        SaleController.create_sale({
+            "amount_paid": 15000, "payment_method": "Mobile Money",
+            "items": [{"product_id": product["id"], "name": product["name"],
+                       "quantity": 1, "unit_price": 20000, "is_manual": False}],
+        })
+        SaleController.create_sale({
+            "amount_paid": 5000, "payment_method": "Chèque",
+            "items": [{"product_id": product["id"], "name": product["name"],
+                       "quantity": 1, "unit_price": 20000, "is_manual": False}],
+        })
+        summary = ReportController.today_cash_summary()
+        assert summary["Cash"] == 10000.0
+        assert summary["Mobile Money"] == 15000.0
+        assert summary["Chèque"] == 5000.0
+
     def test_audit_log_written(self, fresh_db):
         product = self._setup()
         SaleController.create_sale({

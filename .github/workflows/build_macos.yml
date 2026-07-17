@@ -6,6 +6,10 @@ on:
       - "v*"          # Déclenché sur les tags : v1.0.0, v1.1.0 …
   workflow_dispatch:   # Peut être lancé manuellement depuis GitHub
 
+# Permission nécessaire pour créer des releases GitHub
+permissions:
+  contents: write
+
 jobs:
   build-macos:
     name: Build macOS bundle
@@ -56,18 +60,19 @@ jobs:
           path: dist/SalemService.dmg
           retention-days: 30
 
-      # 7. Créer une release GitHub (uniquement sur tag)
+      # 7. Créer une release GitHub avec le DMG attaché (uniquement sur tag)
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: dist/SalemService.dmg
           name: "Salem Service ${{ github.ref_name }}"
+          generate_release_notes: true
           body: |
             ## Salem Service ${{ github.ref_name }}
-            
-            ### Installation macOS
-            1. Télécharger `SalemService.dmg`
+
+            ### 📥 Installation macOS
+            1. Télécharger `SalemService.dmg` ci-dessous
             2. Double-cliquer pour monter le disque
-            3. Glisser `SalemService.app` dans Applications
-            4. Au premier lancement : clic droit → Ouvrir
+            3. Glisser `SalemService.app` dans le dossier Applications
+            4. Au premier lancement : **clic droit → Ouvrir** (sécurité macOS)

@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Environnements virtuels
+.venv/
+venv/
+
+# Build macOS
+build/
+dist/
+resources/AppIcon.iconset/
+resources/AppIcon.icns
+
+# Système
+.DS_Store

@@ -102,20 +102,12 @@ class InvoicingPage(BasePage):
         client_form = QFormLayout()
         client_form.setSpacing(8)
 
-        # Choix rapide d'un client enregistré + sauvegarde facultative.
-        customer_row = QHBoxLayout()
+        # Choix rapide d'un client enregistré.
         self.customer_combo = QComboBox()
         self.customer_combo.setMinimumWidth(150)
+        self.customer_combo.setMinimumHeight(36)
         self.customer_combo.currentIndexChanged.connect(self._on_customer_chosen)
-        save_customer_button = QPushButton("💾 Enregistrer ce client")
-        save_customer_button.setToolTip("Enregistrer nom + téléphone dans la base (facultatif)")
-        save_customer_button.clicked.connect(self._save_customer)
-        customer_row.addWidget(self.customer_combo, 1)
-        customer_row.addWidget(save_customer_button)
-        customer_widget = QWidget()
-        customer_widget.setLayout(customer_row)
-        customer_row.setContentsMargins(0, 0, 0, 0)
-        client_form.addRow("Client enregistré", customer_widget)
+        client_form.addRow("Client enregistré", self.customer_combo)
 
         # Saisie Nom et Téléphone sur une seule ligne horizontale
         row_fields = QHBoxLayout()
@@ -196,10 +188,6 @@ class InvoicingPage(BasePage):
         man_form.addRow("Qté / P.U.", man_qty_price_layout)
         
         manual_layout.addLayout(man_form)
-        add_to_base = QPushButton("⬇ Ajouter ce produit à la base")
-        add_to_base.setToolTip("Enregistre ce produit dans le catalogue (stock, prix…)")
-        add_to_base.clicked.connect(self._add_manual_to_base)
-        manual_layout.addWidget(add_to_base)
         self.add_tabs.addTab(manual_tab, "Produit manuel")
 
         add_line_button = QPushButton("＋ Ajouter à la facture")
@@ -324,15 +312,9 @@ class InvoicingPage(BasePage):
         right_layout.setContentsMargins(18, 16, 18, 16)
         right_layout.setSpacing(10)
 
-        history_header = QHBoxLayout()
         history_label = QLabel("Historique des factures")
         history_label.setStyleSheet("font-weight: 700; font-size: 15px;")
-        history_header.addWidget(history_label)
-        history_header.addStretch()
-        refresh_button = QPushButton("Actualiser")
-        refresh_button.clicked.connect(self.refresh)
-        history_header.addWidget(refresh_button)
-        right_layout.addLayout(history_header)
+        right_layout.addWidget(history_label)
 
         self.history_table = self.make_table(
             ["N°", "Date", "Client", "Total", "Payé", "Reste", "Statut"]
@@ -349,19 +331,16 @@ class InvoicingPage(BasePage):
         history_buttons = QHBoxLayout()
         preview_button = QPushButton("👁 Aperçu / Imprimer")
         preview_button.clicked.connect(self._preview_selected)
-        pdf_button = QPushButton("Ouvrir le PDF")
-        pdf_button.clicked.connect(self._open_pdf_selected)
         self.cancel_button = QPushButton("Annuler la facture")
         self.cancel_button.setObjectName("DangerButton")
         self.cancel_button.clicked.connect(self._cancel_selected)
         self.cancel_button.setVisible(user.role == ROLE_ADMIN)
-        
+
         self.convert_button = QPushButton("🔄 Convertir en Facture")
         self.convert_button.clicked.connect(self._convert_selected)
         self.convert_button.setVisible(False)
-        
+
         history_buttons.addWidget(preview_button)
-        history_buttons.addWidget(pdf_button)
         history_buttons.addWidget(self.convert_button)
         history_buttons.addWidget(self.cancel_button)
         history_buttons.addStretch()

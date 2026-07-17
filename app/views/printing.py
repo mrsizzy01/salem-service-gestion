@@ -35,14 +35,20 @@ def invoice_html(sale: dict, company: dict) -> str:
     return f"""
 <html><body style="font-family: Helvetica, Arial; font-size: 11px; color: #1C1C1E;">
   <table width="100%"><tr>
-    <td><h2 style="color:#0A84FF; margin:0;">{doc_title}</h2>
-        <div>N° <b>{sale['number']}</b></div>
-        <div style="color:#8E8E93;">{date_text}</div></td>
-    <td align="right"><b>{company.get('name','')}</b><br/>
-        <span style="color:#8E8E93;">{company.get('address','')}<br/>
-        {company.get('phone','')} {company.get('email','')}</span></td>
+    <td width="55%">
+      <span style="font-size:18px; font-weight:bold; color:#0A84FF;">{company.get('name') or 'Votre Entreprise'}</span><br/>
+      <span style="color:#8E8E93; font-size:10px;">
+        {company.get('address','')}{('<br/>' + company.get('phone','')) if company.get('phone') else ''}
+        {('<br/>' + company.get('email','')) if company.get('email') else ''}
+      </span>
+    </td>
+    <td align="right" valign="top">
+      <h2 style="color:#0A84FF; margin:0 0 4px 0;">{doc_title}</h2>
+      <div>N° <b>{sale['number']}</b></div>
+      <div style="color:#8E8E93;">{date_text}</div>
+    </td>
   </tr></table>
-  <hr/>
+  <hr style="border:0; border-top: 2px solid #0A84FF; margin: 8px 0;"/>
   <p><b>Client :</b> {sale.get('customer_name') or 'Client comptant'}
      &nbsp;&nbsp; <b>Tél. :</b> {sale.get('customer_phone','')}</p>
   <table width="100%" border="1" cellspacing="0" cellpadding="5"
@@ -72,6 +78,7 @@ def invoice_html(sale: dict, company: dict) -> str:
   </tr></table>
 </body></html>
 """
+
 
 
 def ticket_html(sale: dict, company: dict) -> str:

@@ -87,35 +87,50 @@ def generate_invoice_pdf(sale: dict, company: dict, dest: str | Path) -> str:
     )
     elements: list = []
 
-    # ---- En-tête : logo + coordonnées de l'entreprise -------------
-    company_rows = [[Paragraph(
-        f"<b>{company.get('name', '')}</b>",
-        ParagraphStyle("cname", parent=_BOLD, fontSize=13, alignment=2))]]
-    for line in (company.get("address"), company.get("phone"), company.get("email")):
-        if line:
-            company_rows.append([Paragraph(line, _SMALL_GREY_RIGHT)])
-    # Tableau imbriqué : garantit l'alignement à droite du bloc.
-    company_block = Table(company_rows, colWidths=[112 * mm])
-    company_block.setStyle(TableStyle([
-        ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-    ]))
-    logo = _logo_flowable(company.get("logo_path", ""))
+    # ---- En-tête : logo/nom entreprise (gauche) + coordonnées (droite) ----
+    company_name = company.get("name") or "Votre Entreprise"
+    company_address = company.get("address") or ""
+    company_phone = company.get("phone") or ""
+    company_email = company.get("email") or ""
+
+    # Bloc gauche : logo (si présent) + nom + adresse
+    _NAME_STYLE = ParagraphStyle(
+        "cname", fontName="Helvetica-Bold", fontSize=18,
+        textColor=ACCENT, leading=22,
+    )
+    _ADDR_STYLE = ParagraphStyle(
+        "caddr", fontName="Helvetica", fontSize=9,
+        textColor=GREY, leading=13,
+    )
+    left_cells = []
+    logo = _logo_flowable(company.get("logo_path", ""), max_h=18 * mm, max_w=40 * mm)
+    if logo:
+        left_cells.append(logo)
+    left_cells.append(Paragraph(company_name, _NAME_STYLE))
+    addr_parts = [p for p in (company_address, company_phone, company_email) if p]
+    if addr_parts:
+        left_cells.append(Spacer(1, 3))
+        left_cells.append(Paragraph("<br/>".join(addr_parts), _ADDR_STYLE))
+
+    # Bloc droit : titre du document + numéro + date (sera ajouté plus bas dans info)
+    # On construit l'en-tête comme un tableau 2 colonnes : entreprise | vide (titre sera dessous)
+    # Pour un look pro, le nom occupe toute la largeur du haut.
+    from reportlab.platypus import KeepInFrame
+    left_frame = KeepInFrame(90 * mm, 35 * mm, left_cells, mode="shrink")
+
+    # Bannière de fond accent (filet + titre à droite)
     header = Table(
-        [[logo if logo else "", company_block]],
-        colWidths=[60 * mm, 120 * mm],
+        [[left_frame, ""]],
+        colWidths=[110 * mm, 70 * mm],
     )
     header.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
         ("RIGHTPADDING", (0, 0), (-1, -1), 0),
     ]))
     elements.append(header)
     elements.append(Spacer(1, 6))
-    elements.append(HRFlowable(width="100%", thickness=1.4, color=ACCENT))
+    elements.append(HRFlowable(width="100%", thickness=2, color=ACCENT))
     elements.append(Spacer(1, 8))
 
     # ---- Titre + bloc client --------------------------------------
